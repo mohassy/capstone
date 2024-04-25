@@ -12,7 +12,7 @@ def llama2_process_input(text_input):
         api_key=KEY,
         base_url="https://api.deepinfra.com/v1/openai")
     messages.append({"role": "user", "content": text_input})
-    model_id = "meta-llama/Llama-2-70b-chat-hf"
+    model_id = "meta-llama/Meta-Llama-3-70B-Instruct"
     stream = client.chat.completions.create(
         model=model_id,
         messages=messages,
