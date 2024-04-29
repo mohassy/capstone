@@ -1,0 +1,82 @@
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+@include "../pyspltuple.cgt"
+<%
+ # Select the Python wrapper function
+ my $pywrapfunc= $pystyle_fn . '_in';
+%>
+
+#if SPLPY_OP_STATE_HANDLER == 1
+#include "splpy_sh.h"
+#endif
+
+MY_OPERATOR::MY_OPERATOR() :
+   funcop_(NULL),
+   pyInStyleObj_(NULL)
+{
+    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, "<%=$pywrapfunc%>");
+
+@include "../pyspltuple_constructor.cgt"
+
+#if SPLPY_OP_STATE_HANDLER == 1
+   this->getContext().registerStateHandler(*this);
+#endif
+}
+
+
+MY_OPERATOR::~MY_OPERATOR() 
+{
+    {
+      SplpyGIL lock;
+      Py_CLEAR(pyInStyleObj_);
+    }
+
+    delete funcop_;
+}
+
+void MY_OPERATOR::prepareToShutdown() 
+{
+    funcop_->prepareToShutdown();
+}
+
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+    SPL::int32 _hash = 0;
+    {
+#if SPLPY_OP_STATE_HANDLER == 1
+        SPL::AutoMutex am(mutex_);
+#elif SPLPY_CALLABLE_STATEFUL == 1
+        SPL::AutoPortMutex am(mutex_, *this);
+#endif
+
+        try {
+          SplpyGIL lock;
+@include "../pyspltuple2value.cgt"
+
+          PyObject *ret = pySplProcessTuple(funcop_->callable(), value);
+
+          if (ret == NULL) {
+              throw SplpyExceptionInfo::pythonError("hash");
+          }
+
+          pySplValueFromPyObject(_hash, ret);
+          Py_DECREF(ret);
+
+        } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
+            SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
+            return;
+        }
+    }
+
+    OPort0Type otuple;
+    otuple.assignFrom(tuple, false);
+    otuple.set___spl_hash(_hash);
+    submit(otuple, 0);
+}
+
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
+{
+   forwardWindowPunctuation(punct);
+}
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

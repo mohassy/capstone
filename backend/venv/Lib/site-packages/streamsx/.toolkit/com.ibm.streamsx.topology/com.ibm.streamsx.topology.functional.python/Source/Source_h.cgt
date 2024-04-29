@@ -1,0 +1,69 @@
+<% my $pyStateful = 1; %>
+@include "../../opt/python/codegen/py_state.cgt"
+
+#include "splpy.h"
+#include "splpy_funcop.h"
+
+using namespace streamsx::topology;
+
+<%SPL::CodeGen::headerPrologue($model);%>
+
+<%
+my $tkdir = $model->getContext()->getToolkitDirectory();
+my $pydir = $tkdir."/opt/python";
+
+require $pydir."/codegen/splpy.pm";
+
+# Initialize splpy.pm
+splpyInit($model);
+
+my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
+%>
+
+@include "../../opt/python/codegen/py_disallow_cr_trigger.cgt"
+ 
+class MY_OPERATOR : public MY_BASE_OPERATOR
+#if SPLPY_OP_STATE_HANDLER == 1
+ , public SPL::StateHandler
+#endif
+{
+public:
+  MY_OPERATOR();
+  virtual ~MY_OPERATOR(); 
+  void allPortsReady(); 
+  void prepareToShutdown(); 
+  void process(uint32_t idx);
+
+#if SPLPY_OP_STATE_HANDLER == 1
+  virtual void checkpoint(SPL::Checkpoint & ckpt);
+  virtual void reset(SPL::Checkpoint & ckpt);
+  virtual void resetToInitialState();
+#endif
+    
+private:
+  SplpyOp * op() { return funcop_; }
+
+  // Members
+  // Control for interaction with Python
+  SplpyFuncOp *funcop_;
+
+  PyObject *pyOutNames_0;
+
+  // Number of output connections when passing by ref
+  // -1 when cannot pass by ref
+  int32_t occ_;
+
+#if SPLPY_OP_STATE_HANDLER == 1
+    SPL::Mutex mutex_;
+#endif
+
+<%
+if ($pyoutstyle eq 'dict') {
+%>
+    void fromPyTupleToSPLTuple(PyObject *pyDict, OPort0Type & otuple);
+    void fromPyDictToSPLTuple(PyObject *pyTuple, OPort0Type & otuple);
+<%}%>
+}; 
+
+<%SPL::CodeGen::headerEpilogue($model);%>
+

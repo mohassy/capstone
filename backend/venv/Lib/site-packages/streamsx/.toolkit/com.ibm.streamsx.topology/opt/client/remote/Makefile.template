@@ -1,0 +1,30 @@
+ifeq ($(origin STREAMS_SPLPATH), undefined)
+    ADDL_TKS=''
+else
+    ADDL_TKS=":$(STREAMS_SPLPATH)"
+endif
+
+ifdef STREAMS_CPU_LIMIT
+    THREAD_OPTION=--num-make-threads ${STREAMS_CPU_LIMIT}
+endif
+
+OUT=output
+OUT_PY=${OUT}/etc/streamsx.topology/python
+all:
+	@/bin/rm -fr ${OUT}
+	@/bin/mkdir -p ${OUT_PY}
+	@set -e; for toolkit in `/bin/cat manifest_tk.txt`; do \
+		if [ -f $${toolkit}/opt/python/streams/requirements.txt ]; then \
+			PYTHONUSERBASE=${OUT_PY} pip install --disable-pip-version-check --user --upgrade --requirement $${toolkit}/opt/python/streams/requirements.txt ; \
+		fi; \
+	done;
+	@set -e; for toolkit in `/bin/cat manifest_tk.txt`; do \
+		if [ -d $${toolkit}/opt/python/streams ]; then \
+			PYTHONUSERBASE=${OUT_PY} python3 com.ibm.streamsx.topology/bin/spl-python-extract.py -i $${toolkit};\
+            	fi; \
+		${STREAMS_INSTALL}/bin/spl-make-toolkit -i $${toolkit}; \
+	done;
+	@set -e; for toolkit in `/bin/cat splmm_dir.txt`; do \
+		${STREAMS_INSTALL}/bin/spl-make-toolkit -i $${toolkit} `cat splmm_opts.txt`; \
+	done;
+	${STREAMS_INSTALL}/bin/sc -M `cat main_composite.txt` --no-toolkit-indexing -t ${STREAMS_INSTALL}/toolkits${ADDL_TKS} --output-directory ${OUT} ${THREAD_OPTION} `cat sc_opts.txt`

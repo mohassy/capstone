@@ -1,0 +1,70 @@
+/*
+ * # Licensed Materials - Property of IBM
+ * # Copyright IBM Corp. 2017
+ */
+<%
+require "splpy_operator.pm";
+my $pyStateful = splpy_OperatorCallable() eq 'class' ? 1 : 0;
+%>
+@include "../../opt/.splpy/common/py_state.cgt"
+
+#include "splpy.h"
+#include "splpy_pyop.h"
+
+using namespace streamsx::topology;
+
+<%SPL::CodeGen::headerPrologue($model);%>
+
+@include "../../opt/.splpy/common/py_no_checkpoint_support.cgt"
+
+<%
+  my %h_tuple_types;
+%>
+
+class MY_OPERATOR : public MY_BASE_OPERATOR, public SplpyPrimitiveOp
+{
+public:
+  MY_OPERATOR();
+  virtual ~MY_OPERATOR(); 
+  void allPortsReady();
+  void process(uint32_t idx);
+  void prepareToShutdown(); 
+  void process(Tuple const & tuple, uint32_t port);
+  void process(Punctuation const & punct, uint32_t port);
+  
+  void convertAndSubmit(uint32_t port, PyObject *tuple_);
+  void submitPunct(uint32_t port);
+
+private:
+    Mutex _mutex;
+    SplpyOp *op() { return pyop_; }
+
+    SplpyPyOp *pyop_;
+
+<%if ($model->getNumberOfInputPorts() != 0) {%>
+    PyObject *pyinputfns_;
+    PyObject *pyInNames_; // port 0
+<%  for (my $p = 1; $p < $model->getNumberOfInputPorts(); $p++) { %>
+    PyObject *pyInNames_<%=$p%>;
+<%}}%>
+
+<% for (my $p = 0; $p < $model->getNumberOfOutputPorts(); $p++) {
+    my $oport = $model->getOutputPortAt($p);
+%>
+  PyObject *pyOutNames_<%=$oport->getIndex()%>;
+  void pySubmitTuplesPort<%=$oport->getIndex()%>(PyObject * value);
+  void fromPythonToPort<%=$oport->getIndex()%>(PyObject *pyTuple, <%=$oport->getCppTupleType()%> &otuple);
+  void fromPythonDictToPort<%=$oport->getIndex()%>(PyObject *pyDict, <%=$oport->getCppTupleType()%> &otuple);
+
+  <%
+     my $otype = $oport->getCppTupleType();
+     if (! exists $h_tuple_types{$otype}) {
+        $h_tuple_types{$otype} = 1;
+  %>
+  void fromPyTupleToSPLTuple(PyObject *pyDict, <%=$oport->getCppTupleType()%> & otuple);
+  void fromPyDictToSPLTuple(PyObject *pyTuple, <%=$oport->getCppTupleType()%> & otuple);
+  <%}%>
+<%}%>
+}; 
+
+<%SPL::CodeGen::headerEpilogue($model);%>

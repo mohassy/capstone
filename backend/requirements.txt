@@ -1,0 +1,9 @@
+fastapi
+python-multipart
+aiofiles
+streamz
+openai
+elevenlabs
+pydantic
+uvicorn
+python-dotenv

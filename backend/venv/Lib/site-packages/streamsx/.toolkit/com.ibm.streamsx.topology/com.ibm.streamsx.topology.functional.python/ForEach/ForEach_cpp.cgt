@@ -1,0 +1,101 @@
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+@include "../pyspltuple.cgt"
+<%
+ # Select the Python wrapper function
+ my $pywrapfunc= $pystyle_fn . '_in';
+%>
+
+#if SPLPY_OP_STATE_HANDLER == 1
+#include "splpy_sh.h"
+#endif
+
+MY_OPERATOR::MY_OPERATOR():
+   funcop_(NULL),
+   pyInStyleObj_(NULL)
+{
+    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, "<%=$pywrapfunc%>");
+
+@include "../pyspltuple_constructor.cgt"
+
+#if SPLPY_OP_STATE_HANDLER == 1
+   this->getContext().registerStateHandler(*this);
+#endif
+}
+
+MY_OPERATOR::~MY_OPERATOR() 
+{
+  {
+      SplpyGIL lock;
+      Py_CLEAR(pyInStyleObj_);
+  }
+
+  delete funcop_;
+}
+
+void MY_OPERATOR::prepareToShutdown() 
+{
+    funcop_->prepareToShutdown();
+}
+
+<%
+my $writePunctuations = $model->getParameterByName("writePunctuations");
+$writePunctuations = $writePunctuations ?  $writePunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
+my $processPunctuations = $model->getParameterByName("processPunctuations");
+$processPunctuations = $processPunctuations ?  $processPunctuations->getValueAt(0)->getSPLExpression() eq "true" : 0;
+my $processPunct = $writePunctuations | $processPunctuations;
+%>
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+#if SPLPY_OP_STATE_HANDLER == 1
+         SPL::AutoMutex am(mutex_);
+#elif SPLPY_CALLABLE_STATEFUL == 1
+         SPL::AutoPortMutex am(mutex_, *this);
+#else
+<%if ($processPunct) {%>
+    SPL::Mutex mutex_; // processPunct
+<%} else {%>
+    // processPunct is false
+<%}%>
+#endif
+
+    try {
+      SplpyGIL lock;
+
+@include "../pyspltuple2value.cgt"
+
+      PyObject *ret = pySplProcessTuple(funcop_->callable(), value);
+
+      if (ret == NULL) {
+        throw SplpyExceptionInfo::pythonError("for_each");
+      }
+
+      Py_DECREF(ret);
+
+    } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
+       SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
+    }
+}
+<%
+my $writeTag = $model->getParameterByName("writeTag");
+my $useWriteTag = $writeTag ?  1 : 0;
+%>
+
+<%if ($processPunct) {%>
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port) {
+  <%if ($writePunctuations) {%>
+      <%if ($useWriteTag) {%>
+      std::cout << <%=$writeTag->getValueAt(0)->getSPLExpression()%> << "Punctuation received: " << punct << std::endl;
+      <%}else {%>
+      std::cout << "Punctuation received: " << punct << std::endl;
+      <%}%>
+  <%}%>
+  <%if ($processPunctuations) {%>
+      if (punct == Punctuation::WindowMarker) {
+         funcop_->punct();
+      }
+  <%}%>
+}
+<%}%>
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

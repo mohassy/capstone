@@ -1,0 +1,184 @@
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+@include "../pyspltuple.cgt"
+<%
+ my $pyoutstyle = splpy_tuplestyle($model->getOutputPortAt(0));
+%>
+
+<%
+ # Select the Python wrapper function
+ my $pywrapfunc= $pystyle_fn . '_in__pickle_iter';
+ if ($pyoutstyle eq 'dict') {
+   $pywrapfunc= $pystyle_fn . '_in__object_iter';
+ }
+%>
+
+// Default case is pass by pickled value in which case
+// flat map code is nothing.
+#define SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(splv, pyv, occ)
+    
+#if SPLPY_OP_STATE_HANDLER == 1
+#include "splpy_sh.h"
+#endif
+
+MY_OPERATOR::MY_OPERATOR() :
+   funcop_(NULL),
+   pyInStyleObj_(NULL),
+ <%if ($pyoutstyle eq 'dict') {%>    
+   pyOutNames_0(NULL),
+ <%}%>
+   occ_(-1)
+{ 
+    const char * wrapfn = "<%=$pywrapfunc%>";
+
+<%
+# If occ parameter is positive then pass-by-ref is possible
+# Generate code to allow pass by ref but only use when
+# not connected to a PE output port.
+
+ my $oc = $model->getParameterByName("outputConnections");
+
+ if ($oc) {
+    my $occ = $oc->getValueAt(0)->getSPLExpression();
+    if ($occ > 0) {
+        my $pybyrefwrapfunc = $pystyle_fn . '_in__object_iter';
+%>
+
+// Macro inserts an if passing by ref check then pass tuple
+// by ref, else use the existing code.
+#undef SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF
+#define SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(splv, pyv, occ) \
+    if (occ_ > 0) { \
+        pyTupleByRef(splv, pyv, occ_); \
+    } else
+
+    if (!this->getOutputPortAt(0).isConnectedToAPEOutputPort()) {
+       // pass by reference
+       wrapfn = "<%=$pybyrefwrapfunc%>";
+       occ_ = <%=$occ%>;
+    }
+<%
+    } 
+ }
+%>
+
+    funcop_ = new SplpyFuncOp(this, SPLPY_CALLABLE_STATE_HANDLER, wrapfn);
+
+@include "../pyspltuple_constructor.cgt"
+#if SPLPY_OP_STATE_HANDLER == 1
+   this->getContext().registerStateHandler(*this);
+#endif
+
+<%if ($pyoutstyle eq 'dict') {%>
+    pyOutNames_0 = Splpy::pyAttributeNames(getOutputPortAt(0));
+<%}%> 
+}
+
+MY_OPERATOR::~MY_OPERATOR() 
+{
+  {
+      SplpyGIL lock;
+      Py_CLEAR(pyInStyleObj_);
+  }
+
+  delete funcop_;
+}
+
+void MY_OPERATOR::prepareToShutdown() 
+{
+    funcop_->prepareToShutdown();
+}
+
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+  std::vector<OPort0Type> output_tuples; 
+  
+ {
+#if SPLPY_OP_STATE_HANDLER == 1
+  SPL::AutoMutex am(mutex_);
+#elif SPLPY_CALLABLE_STATEFUL == 1
+  SPL::AutoPortMutex am(mutex_, *this);
+#endif
+
+@include "../pyspltuple2value.cgt"
+  try {
+    SplpyGIL lock;
+
+    PyObject * pyIterator = streamsx::topology::pySplProcessTuple(funcop_->callable(), value);
+
+    if (pyIterator == 0) {
+         throw SplpyExceptionInfo::pythonError(
+               getParameterValues("pyName").at(0)->getValue().toString().c_str());
+    }
+    if (SplpyGeneral::isNone(pyIterator)) {
+        Py_DECREF(pyIterator);
+        return;
+    }
+        
+    PyObject * item;
+    while (!getPE().getShutdownRequested()
+          &&  ((item = PyIter_Next(pyIterator)) != NULL) ) {
+
+      // construct spl blob and tuple from pickled return value
+      OPort0Type otuple;
+
+    <%if ($pyoutstyle eq 'dict') {%>     
+      if (item == NULL)
+          return;
+      if (PyTuple_Check(item)) {
+          fromPyTupleToSPLTuple(item, otuple);
+          Py_DECREF(item);
+      } else if (PyDict_Check(item)) {
+          fromPyDictToSPLTuple(item, otuple);
+          Py_DECREF(item);
+      } else {
+    	  pySplValueFromPyObject(otuple.get_<%=$model->getOutputPortAt(0)->getAttributeAt(0)->getName()%>(), item);
+    	  Py_DECREF(item);
+      }      
+    <% } else { %>
+      SPLPY_OUT_TUPLE_FLAT_MAP_BY_REF(otuple.get___spl_po(), item, occ_)
+      {
+          pySplValueFromPyObject(otuple.get___spl_po(), item);
+          Py_DECREF(item); 
+      }
+    <%}%>
+      output_tuples.push_back(otuple);
+    }
+    Py_DECREF(pyIterator);
+  } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
+    SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
+    return;
+  }
+ }
+
+  // submit tuples
+  for(int i = 0; i < output_tuples.size() && !getPE().getShutdownRequested(); i++) {
+    submit(output_tuples[i], 0);
+  } 
+}
+
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
+{
+   forwardWindowPunctuation(punct);
+}
+
+<%
+  if ($pyoutstyle eq 'dict') {
+	my %cpp_tuple_types;  
+    # In this case we don't want the function that
+    # converts the Python tuple to an SPL tuple to
+    # copy attributes from the input port
+    my $iport;
+
+    my $oport = $model->getOutputPortAt(0);
+    my $oport_submission = 0;
+    my $otupleType = $oport->getSPLTupleType();
+    my @onames = SPL::CodeGen::Type::getAttributeNames($otupleType);
+    my @otypes = SPL::CodeGen::Type::getAttributeTypes($otupleType);
+
+%>
+// Create member function that converts Python tuple to SPL tuple
+@include  "../../opt/python/codegen/py_pyTupleTosplTuple.cgt"
+<%}%>
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

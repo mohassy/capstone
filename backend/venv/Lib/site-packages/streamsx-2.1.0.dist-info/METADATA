@@ -1,0 +1,73 @@
+Metadata-Version: 2.1
+Name: streamsx
+Version: 2.1.0
+Summary: IBM Streams Python Support
+Home-page: https://github.com/IBMStreams/pypi.streamsx
+Author: IBM Streams @ github.com
+Author-email: hegermar@de.ibm.com
+License: Apache License - Version 2.0
+Download-URL: https://github.com/IBMStreams/pypi.streamsx/tarball/2.1.0
+Keywords: streams,ibmstreams,streaming,analytics,streaming-analytics
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Requires-Dist: requests
+Requires-Dist: future
+Requires-Dist: dill (<0.3.1,>=0.2.8.2)
+
+Python APIs for use with Streaming Analytics service on
+IBM Cloud and IBM Streams including IBM Cloud Pak for Data.
+
+* `IBM Streams <https://ibmstreams.github.io/>`_
+
+streamsx 2.1.1
+==============
+
+For changes in this release see the `CHANGELOG of the project. <https://github.com/IBMStreams/pypi.streamsx/blob/v2_0/streamsx/.toolkit/com.ibm.streamsx.topology/CHANGELOG.md>`_
+
+Python Topology API for Streams
+===============================
+Module that allows the definition and execution of streaming
+applications implemented in Python. Applications use Python code to process
+tuples and tuples are Python objects.
+
+See `streamsx.topology <https://streamsxtopology.readthedocs.io/en/v2.1.1/streamsx.topology.html#module-streamsx.topology>`_
+
+Additional streamsx packages providing adapters and/or analytics
+are `available at pypi.org <https://pypi.org/search/?q=streamsx>`_
+
+Python callables as SPL operators
+=================================
+A Python function or class can be simply turned into an SPL primitive operator
+to allow tuple processing using Python in an SPL application.
+
+SPL (Streams Processing Language) is a domain specific language for streaming
+analytics supported by IBM Streams.
+
+See `streamsx.spl <https://streamsxtopology.readthedocs.io/en/v2.1.1/streamsx.spl.spl.html#module-streamsx.spl.spl>`_
+
+Streams Python REST API
+=======================
+
+Module that allows interaction with an running Streams instance or service
+through HTTPS REST APIs.
+
+See `streamsx.rest <https://streamsxtopology.readthedocs.io/en/v2.1.1/streamsx.rest.html#module-streamsx.rest>`_
+
+Documentation
+=============
+
+`Full package documentation. <https://streamsxtopology.readthedocs.io/en/v2.1.1>`_
+
+Restrictions
+============
+
+**When used with Cloud Pak for Data, this release requires at minimum version 3.5 of Cloud Pak for Data.**
+
+`complete list of restrictions and known bugs <https://streamsxtopology.readthedocs.io/en/v2.1.1/restrictions.html>`_
+
+

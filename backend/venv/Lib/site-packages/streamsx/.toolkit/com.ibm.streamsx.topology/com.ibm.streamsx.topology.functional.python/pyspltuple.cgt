@@ -1,0 +1,34 @@
+<%
+ # Generic setup of a variety of variables to
+ # handle conversion of spl tuples to/from Python
+
+ my $tkdir = $model->getContext()->getToolkitDirectory();
+ my $pydir = $tkdir."/opt/python";
+
+ require $pydir."/codegen/splpy.pm";
+
+ # Initialize splpy.pm
+ splpyInit($model);
+
+ # Currently function operators only have a single input port
+ # and take all the input attributes
+ my $iport = $model->getInputPortAt(0);
+ my $inputAttrs2Py = $iport->getNumberOfAttributes();
+
+ # determine which input tuple style is being used
+ my $pystyle = $model->getParameterByName("pyStyle");
+ if ($pystyle) {
+     $pystyle = substr($pystyle->getValueAt(0)->getSPLExpression(), 1, -1);
+ } else {
+     $pystyle = splpy_tuplestyle($model->getInputPortAt(0));
+ }
+ # $pystyle is the raw value from the operator parameter
+ # $pystyle_nt is the value that defines how the function is called
+ # (for style namedtuple:xxxx it is tuple)
+ # $pystyle_nt is non-zero if style is namedtuple
+ my $pystyle_fn = $pystyle;
+ my $pystyle_nt = substr($pystyle, 0, 11) eq 'namedtuple:';
+ if ($pystyle_nt) {
+    $pystyle_fn = 'tuple';
+ }
+%>

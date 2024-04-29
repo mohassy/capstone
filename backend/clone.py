@@ -1,7 +1,26 @@
-from elevenlabs import stream
 import os
+import base64
 from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
+
+
+async def clone_voice(voice_name, file_names):
+    load_dotenv()
+    KEY = os.getenv("LAB_API_KEY")
+    client = ElevenLabs(
+        api_key=KEY,
+    )
+    file_paths = [f"./samples/{voice_name.lower()}/{file_name}" for file_name in file_names]
+    voice = client.clone(
+        name=voice_name,
+        description="",  # Optional
+        files=file_paths,  # Pass the file data as bytes
+    )
+    if(voice is not None):
+        print(f"successfully created voice: {voice}")
+        return True
+    return False
+
 
 
 if __name__ == "__main__":
@@ -10,7 +29,7 @@ if __name__ == "__main__":
     KEY = os.getenv("LAB_API_KEY")
 
     client = ElevenLabs(
-      api_key=KEY,  # Defaults to ELEVEN_API_KEY
+        api_key=KEY,  # Defaults to ELEVEN_API_KEY
     )
     name = input("Enter name:")
     description = input("Enter description:")

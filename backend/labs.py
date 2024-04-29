@@ -8,26 +8,20 @@ load_dotenv()
 KEY = os.getenv("LAB_API_KEY")
 
 client = ElevenLabs(
-  api_key=KEY,  # Defaults to ELEVEN_API_KEY
+    api_key=KEY,  # Defaults to ELEVEN_API_KEY
 )
 
-class Lab:
-    def __init__(self):
-        self.voice = "Hassan"
 
-    def set_voice(self, voice):
-        self.voice = voice
-
-    async def generate_audio(self, text_stream):
-        audio_stream = client.generate(
-            text=text_stream,
-            voice=self.voice,
-            model="eleven_monolingual_v1",
-            # model="eleven_multilingual_v2",
-            stream=True,
-        )
-        # Stream the audio
-        try:
-            stream(audio_stream)
-        except KeyError as e:
-            print(f"KeyError: {e}")
+def generate_audio(text_stream, voice):
+    print("Generating audio...")
+    audio_stream = client.generate(
+        text=text_stream,
+        voice=voice,
+        model="eleven_monolingual_v1",
+        stream=True,
+    )
+    # Stream the audio
+    try:
+        stream(audio_stream)
+    except KeyError as e:
+        print(f"KeyError: {e}")

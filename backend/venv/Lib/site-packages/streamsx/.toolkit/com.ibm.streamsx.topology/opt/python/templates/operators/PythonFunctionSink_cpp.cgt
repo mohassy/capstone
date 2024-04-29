@@ -1,0 +1,131 @@
+/*
+ * # Licensed Materials - Property of IBM
+ * # Copyright IBM Corp. 2015,2016
+ */
+
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+@include "../../opt/.splpy/common/py_disallow_cr_trigger.cgt"
+
+<%
+ my $cmnDir = $model->getContext()->getToolkitDirectory()."/opt/.splpy/common/";
+
+ require "splpy_operator.pm";
+ require $cmnDir."/splpy.pm";
+
+ my $module = splpy_Module();
+ my $functionName = splpy_FunctionName();
+ my $paramStyle = splpy_ParamStyle();
+ my $fixedParam = splpy_FixedParam();
+ my @packages = splpy_Packages();
+ spl_pip_packages(splpy_PyMajor(), $model, \@packages);
+ 
+ my $iport = $model->getInputPortAt(0);
+ my $itupleType = $iport->getSPLTupleType();
+
+ my $inputAttrs2Py = $iport->getNumberOfAttributes();
+ if ($fixedParam != -1) {
+    $inputAttrs2Py = $fixedParam;
+ }
+ if ($fixedParam > $iport->getNumberOfAttributes()) {
+   SPL::CodeGen::exitln('%s requires at least %i attributes in input port but schema is %s',
+           $model->getContext()->getKind(), $fixedParam, $iport->getSPLTupleType());
+ }
+ 
+  my $ituple = $iport->getCppTupleName();
+
+  my $skip_set_callable = 0;
+%>
+
+#if SPLPY_OP_STATE_HANDLER == 1
+#include "splpy_sh.h"
+#endif
+
+MY_OPERATOR::MY_OPERATOR() :
+    pyop_(NULL),
+    pyInNames_(NULL)
+{
+   PyObject * callable;
+@include  "../../opt/.splpy/common/py_constructor.cgt"
+
+<% if ($paramStyle eq 'dictionary') { %>
+   {
+      SplpyGIL lock;
+      pyInNames_ = streamsx::topology::Splpy::pyAttributeNames(
+               getInputPortAt(0));
+   }
+<% } %>
+
+#if SPLPY_OP_STATE_HANDLER == 1
+   this->getContext().registerStateHandler(*this);
+#endif
+}
+
+MY_OPERATOR::~MY_OPERATOR() 
+{
+   {
+     SplpyGIL lock;
+     Py_CLEAR(pyInNames_);
+   }
+   delete pyop_;
+}
+
+void MY_OPERATOR::prepareToShutdown() 
+{
+    pyop_->prepareToShutdown();
+}
+
+void MY_OPERATOR::process(Tuple const & tuple, uint32_t port)
+{
+ @include  "../../opt/.splpy/common/py_splTupleCheckForBlobs.cgt"
+
+#if SPLPY_OP_STATE_HANDLER == 1
+   SPL::AutoMutex am(mutex_);
+#elif SPLPY_CALLABLE_STATEFUL == 1
+   SPL::AutoPortMutex am(mutex_, *this);
+#else
+   SPL::AutoPortMutex am(mutex_, *this);
+#endif
+try {
+   SplpyGIL lock;
+
+ @include  "../../opt/.splpy/common/py_splTupleToFunctionArgs.cgt"
+  
+    PyObject * pyReturnNone = SplpyGeneral::pyObject_Call(pyop_->callable(), pyTuple, pyDict);
+
+    if (pyReturnNone == NULL) {
+        throw SplpyExceptionInfo::pythonError("<%=$functionName%>");
+    }
+
+    Py_DECREF(pyReturnNone);
+ } catch (const streamsx::topology::SplpyExceptionInfo& excInfo) {
+    SPLPY_OP_HANDLE_EXCEPTION_INFO_GIL(excInfo);
+ }
+}
+
+void MY_OPERATOR::process(Punctuation const & punct, uint32_t port) {
+#if SPLPY_OP_STATE_HANDLER == 1
+    SPL::AutoMutex am(mutex_);
+#elif SPLPY_CALLABLE_STATEFUL == 1
+    SPL::AutoPortMutex am(mutex_, *this);
+#else
+    SPL::AutoPortMutex am(mutex_, *this);
+#endif
+    if (punct == Punctuation::WindowMarker) {
+        PyObject *pyObjOnPunct = NULL;
+        SplpyGIL lock;
+        Py_INCREF(pyop_->callable());
+        pyObjOnPunct = SplpyGeneral::callFunction("streamsx.spl.runtime", "_splpy_on_punct", pyop_->callable(), NULL);
+        bool callable = (bool) PyCallable_Check(pyObjOnPunct);
+        if (callable) {
+            PyObject *rv = SplpyGeneral::pyCallObject(pyObjOnPunct, NULL);
+            Py_DECREF(rv);
+            Py_DECREF(pyObjOnPunct);
+        }
+        else if (NULL != pyObjOnPunct) {
+            Py_DECREF(pyObjOnPunct);
+        }
+    }
+}
+
+<%SPL::CodeGen::implementationEpilogue($model);%>
